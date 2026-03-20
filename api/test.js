@@ -4,7 +4,9 @@ export default async function handler(req, res) {
     const apiKey = process.env.AZURE_API_KEY || "";
 
     if (!endpoint || !apiKey) {
-      return res.status(500).json({ error: "Azure environment variables are missing." });
+      return res.status(500).json({
+        error: "Azure environment variables are missing."
+      });
     }
 
     const url = `${endpoint}/documentintelligence/documentModels?api-version=2024-11-30`;
@@ -12,8 +14,8 @@ export default async function handler(req, res) {
     const azureRes = await fetch(url, {
       method: "GET",
       headers: {
-        "Ocp-Apim-Subscription-Key": apiKey,
-      },
+        "Ocp-Apim-Subscription-Key": apiKey
+      }
     });
 
     const text = await azureRes.text();
@@ -21,7 +23,7 @@ export default async function handler(req, res) {
     if (!azureRes.ok) {
       return res.status(azureRes.status).json({
         error: "Connection failed.",
-        details: text,
+        details: text
       });
     }
 
@@ -34,11 +36,11 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ok: true,
-      data,
+      data
     });
   } catch (err) {
     return res.status(500).json({
-      error: err.message || "Internal server error",
+      error: err.message || "Internal server error"
     });
   }
 }

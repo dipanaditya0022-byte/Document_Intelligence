@@ -77,6 +77,20 @@ function init() {
   resetResults();
   updateSourceSummary();
   renderHistory();
+
+  // Hide endpoint/api key inputs in secure mode if they exist
+  hideLegacyCredentialInputs();
+}
+
+function hideLegacyCredentialInputs() {
+  if (endpointEl) {
+    const wrap = endpointEl.closest(".form-group, .input-group, .field, .control") || endpointEl.parentElement;
+    if (wrap) wrap.style.display = "none";
+  }
+  if (apiKeyEl) {
+    const wrap = apiKeyEl.closest(".form-group, .input-group, .field, .control") || apiKeyEl.parentElement;
+    if (wrap) wrap.style.display = "none";
+  }
 }
 
 function wireTheme() {
@@ -118,22 +132,26 @@ function wireSourceModes() {
 
 function wireUpload() {
   dropzone.addEventListener("click", () => fileInput.click());
+
   ["dragenter", "dragover"].forEach(evt =>
     dropzone.addEventListener(evt, e => {
       e.preventDefault();
       dropzone.classList.add("dragover");
     })
   );
+
   ["dragleave", "drop"].forEach(evt =>
     dropzone.addEventListener(evt, e => {
       e.preventDefault();
       dropzone.classList.remove("dragover");
     })
   );
+
   dropzone.addEventListener("drop", e => {
     const f = e.dataTransfer.files?.[0];
     if (f) setSelectedFile(f);
   });
+
   fileInput.addEventListener("change", e => {
     const f = e.target.files?.[0];
     if (f) setSelectedFile(f);
@@ -153,6 +171,7 @@ function updateDocPreview(file) {
     docPreviewArea.innerHTML = `<div class="doc-preview-empty"><div class="icon">📁</div>Upload a document to preview it here</div>`;
     return;
   }
+
   if (file.type.startsWith("image/")) {
     docPreviewArea.innerHTML = `<img src="${URL.createObjectURL(file)}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);" alt="Preview"/>`;
   } else if (file.type === "application/pdf") {
@@ -168,6 +187,7 @@ function wirePaste() {
     if (!imgItem) return;
     const blob = imgItem.getAsFile();
     if (!blob) return;
+
     pastedImageBlob = blob;
     pastedImageName = `pasted-image-${Date.now()}.png`;
     pastePreviewImg.src = URL.createObjectURL(blob);
@@ -186,7 +206,7 @@ function wireButtons() {
   clearBtn.addEventListener("click", clearAll);
   clearHistoryBtn.addEventListener("click", clearHistory);
 
-  [modelIdEl, urlSourceEl].forEach(el => {
+  [modelIdEl, localeEl, pagesEl, stringIndexTypeEl, urlSourceEl].forEach(el => {
     if (el) el.addEventListener("input", updateSourceSummary);
   });
 }
@@ -207,8 +227,11 @@ function saveConfig() {
 function loadSavedConfig() {
   try {
     const cfg = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+
+    // Clear legacy sensitive inputs
     if (endpointEl) endpointEl.value = "";
     if (apiKeyEl) apiKeyEl.value = "";
+
     modelIdEl.value = cfg.modelId || "prebuilt-layout";
     localeEl.value = cfg.locale || "";
     pagesEl.value = cfg.pages || "";
@@ -216,7 +239,11 @@ function loadSavedConfig() {
   } catch {
     if (endpointEl) endpointEl.value = "";
     if (apiKeyEl) apiKeyEl.value = "";
+
     modelIdEl.value = "prebuilt-layout";
+    localeEl.value = "";
+    pagesEl.value = "";
+    stringIndexTypeEl.value = "textElements";
   }
 }
 
@@ -316,8 +343,8 @@ function saveHistory() {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(analysisHistory.slice(0, 20)));
 }
 
-function addToHistory(e) {
-  analysisHistory.unshift(e);
+function addToHistory(entry) {
+  analysisHistory.unshift(entry);
   if (analysisHistory.length > 20) analysisHistory.pop();
   saveHistory();
   renderHistory();
@@ -338,14 +365,14 @@ function renderHistory() {
   historyList.innerHTML = analysisHistory
     .map(
       (h, i) => `
-    <div class="history-item fade-in" data-index="${i}">
-      <div class="history-dot ${h.status === "Succeeded" ? "" : "failed"}"></div>
-      <div class="history-info">
-        <div class="history-name">${escapeHtml(h.name)}</div>
-        <div class="history-meta">${escapeHtml(h.model)} · ${escapeHtml(h.time)}</div>
-      </div>
-      <div class="history-badge">${escapeHtml(String(h.pages || "?"))}p</div>
-    </div>`
+      <div class="history-item fade-in" data-index="${i}">
+        <div class="history-dot ${h.status === "Succeeded" ? "" : "failed"}"></div>
+        <div class="history-info">
+          <div class="history-name">${escapeHtml(h.name)}</div>
+          <div class="history-meta">${escapeHtml(h.model)} · ${escapeHtml(h.time)}</div>
+        </div>
+        <div class="history-badge">${escapeHtml(String(h.pages || "?"))}p</div>
+      </div>`
     )
     .join("");
 
@@ -365,8 +392,14 @@ function renderHistory() {
 }
 
 function getCurrentSource() {
-  if (activeSourcePane === "uploadPane" && selectedFile) return { type: "file", file: selectedFile };
-  if (activeSourcePane === "urlPane" && urlSourceEl.value.trim()) return { type: "url", url: urlSourceEl.value.trim() };
+  if (activeSourcePane === "uploadPane" && selectedFile) {
+    return { type: "file", file: selectedFile };
+  }
+
+  if (activeSourcePane === "urlPane" && urlSourceEl.value.trim()) {
+    return { type: "url", url: urlSourceEl.value.trim() };
+  }
+
   if (activeSourcePane === "pastePane" && pastedImageBlob) {
     return {
       type: "file",
@@ -375,6 +408,7 @@ function getCurrentSource() {
       })
     };
   }
+
   return null;
 }
 
@@ -396,7 +430,7 @@ async function analyzeDocument() {
   setProgress(12);
   metaModel.textContent = modelId;
 
-  const sourceName = source.type === "url" ? source.url : source.file?.name || "Pasted image";
+  const sourceName = source.type === "url" ? source.url : (source.file?.name || "Pasted image");
 
   try {
     operationId.textContent = "secure-server-flow";
@@ -420,7 +454,7 @@ async function analyzeDocument() {
 
     const ar = result.analyzeResult || {};
     addToHistory({
-      name: sourceName.length > 40 ? sourceName.substring(0, 40) + "…" : sourceName,
+      name: sourceName.length > 40 ? `${sourceName.substring(0, 40)}…` : sourceName,
       model: modelId,
       time: new Date().toLocaleTimeString(),
       pages: (ar.pages || []).length,
@@ -433,8 +467,9 @@ async function analyzeDocument() {
     setProgress(100);
     jsonOutput.textContent = JSON.stringify({ error: err.message || String(err) }, null, 2);
     resultSummary.textContent = "Failed";
+
     addToHistory({
-      name: sourceName.length > 40 ? sourceName.substring(0, 40) + "…" : sourceName,
+      name: sourceName.length > 40 ? `${sourceName.substring(0, 40)}…` : sourceName,
       model: modelId,
       time: new Date().toLocaleTimeString(),
       pages: "?",
@@ -447,7 +482,7 @@ async function analyzeDocument() {
 }
 
 async function submitAnalyzeRequest({ modelId, locale, pages, stringIndexType, source }) {
-  let body = {
+  const body = {
     modelId,
     locale,
     pages,
@@ -459,10 +494,14 @@ async function submitAnalyzeRequest({ modelId, locale, pages, stringIndexType, s
   } else {
     const ab = await source.file.arrayBuffer();
     const bytes = new Uint8Array(ab);
+
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
     }
+
     body.fileBase64 = btoa(binary);
     body.fileType = source.file.type || "application/octet-stream";
   }
@@ -480,7 +519,7 @@ async function submitAnalyzeRequest({ modelId, locale, pages, stringIndexType, s
   if (!response.ok) {
     throw new Error(
       data.error
-        ? `${data.error}${data.details ? " " + JSON.stringify(data.details) : ""}`
+        ? `${data.error}${data.details ? ` ${typeof data.details === "string" ? data.details : JSON.stringify(data.details)}` : ""}`
         : "Analyze request failed."
     );
   }
@@ -581,13 +620,17 @@ function renderFields(documents) {
   documents.forEach((doc, i) => {
     chunks.push(`<div class="field-item"><div class="field-name">Document ${i + 1} · ${escapeHtml(doc.docType || "Unknown")}</div><div class="field-meta">Confidence: ${formatConfidence(doc.confidence)}</div></div>`);
     const names = Object.keys(doc.fields || {});
+
     if (!names.length) {
       chunks.push(`<div class="field-item"><div class="field-val">No fields in this document.</div></div>`);
     } else {
       names.forEach(name => {
         const field = (doc.fields || {})[name];
         const conf = typeof field?.confidence === "number" ? field.confidence : null;
-        chunks.push(`<div class="field-item"><div class="field-name">${escapeHtml(name)}</div><div class="field-val">${escapeHtml(formatFieldValue(field))}</div><div class="field-meta">Type: ${escapeHtml(field?.type || "Unknown")} · Confidence: ${formatConfidence(field?.confidence)}</div>${conf !== null ? `<div class="conf-track" style="margin-top:5px;"><div class="conf-fill" style="width:${(conf * 100).toFixed(1)}%"></div></div>` : ""}</div>`);
+
+        chunks.push(
+          `<div class="field-item"><div class="field-name">${escapeHtml(name)}</div><div class="field-val">${escapeHtml(formatFieldValue(field))}</div><div class="field-meta">Type: ${escapeHtml(field?.type || "Unknown")} · Confidence: ${formatConfidence(field?.confidence)}</div>${conf !== null ? `<div class="conf-track" style="margin-top:5px;"><div class="conf-fill" style="width:${(conf * 100).toFixed(1)}%"></div></div>` : ""}</div>`
+        );
       });
     }
   });
@@ -603,10 +646,12 @@ function renderTables(tables) {
   }
 
   const out = [];
+
   tables.forEach((table, idx) => {
     const rows = table.rowCount || 0;
     const cols = table.columnCount || 0;
     const grid = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+
     (table.cells || []).forEach(cell => {
       const r = cell.rowIndex ?? 0;
       const c = cell.columnIndex ?? 0;
@@ -614,15 +659,21 @@ function renderTables(tables) {
     });
 
     out.push(`<div class="field-item" style="margin-bottom:12px;"><div class="field-name">Table ${idx + 1}</div><div class="field-meta">${rows} rows × ${cols} columns</div></div><div class="table-wrap"><table>`);
+
     if (rows > 0) {
       out.push("<thead><tr>");
-      for (let c = 0; c < cols; c++) out.push(`<th>${escapeHtml(grid[0][c] || `Col ${c + 1}`)}</th>`);
+      for (let c = 0; c < cols; c++) {
+        out.push(`<th>${escapeHtml(grid[0][c] || `Col ${c + 1}`)}</th>`);
+      }
       out.push("</tr></thead>");
     }
+
     out.push("<tbody>");
     for (let r = 1; r < rows; r++) {
       out.push("<tr>");
-      for (let c = 0; c < cols; c++) out.push(`<td>${escapeHtml(grid[r][c] || "")}</td>`);
+      for (let c = 0; c < cols; c++) {
+        out.push(`<td>${escapeHtml(grid[r][c] || "")}</td>`);
+      }
       out.push("</tr>");
     }
     out.push("</tbody></table></div>");
@@ -634,6 +685,7 @@ function renderTables(tables) {
 function getFullText(result) {
   const ar = result.analyzeResult || {};
   if (ar.content) return ar.content;
+
   const lines = [];
   for (const page of ar.pages || []) {
     for (const line of page.lines || []) {
@@ -645,6 +697,7 @@ function getFullText(result) {
 
 async function copyExtractedText() {
   if (!lastResult) return;
+
   try {
     await navigator.clipboard.writeText(getFullText(lastResult));
     setStatus("Copied ✓", "good", "Text copied to clipboard");
@@ -655,7 +708,11 @@ async function copyExtractedText() {
 
 function downloadJson() {
   if (!lastResult) return;
-  const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: "application/json" });
+
+  const blob = new Blob([JSON.stringify(lastResult, null, 2)], {
+    type: "application/json"
+  });
+
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -676,16 +733,24 @@ function formatFieldValue(field) {
   if (field.valuePhoneNumber) return field.valuePhoneNumber;
   if (field.valueCountryRegion) return field.valueCountryRegion;
   if (field.valueSelectionMark) return field.valueSelectionMark;
+
   if (field.valueCurrency) {
     const { amount = "", currencySymbol: sym = "", currencyCode: code = "" } = field.valueCurrency;
     return `${sym}${amount} ${code}`.trim();
   }
-  if (field.valueArray) return field.valueArray.map(item => formatFieldValue(item)).join(", ");
+
+  if (field.valueArray) {
+    return field.valueArray.map(item => formatFieldValue(item)).join(", ");
+  }
+
   if (field.valueObject) {
     const obj = {};
-    for (const key in field.valueObject) obj[key] = formatFieldValue(field.valueObject[key]);
+    for (const key in field.valueObject) {
+      obj[key] = formatFieldValue(field.valueObject[key]);
+    }
     return JSON.stringify(obj, null, 2);
   }
+
   return "—";
 }
 
